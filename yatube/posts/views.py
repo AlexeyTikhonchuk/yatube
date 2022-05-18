@@ -10,9 +10,10 @@ from .utils import paginator
 User = get_user_model()
 
 
+# @cache_page(20)
 def index(request: HttpRequest) -> HttpResponse:
     """Вернуть главную страницу"""
-    posts = Post.objects.select_related().all()
+    posts = Post.objects.all()
     page_obj = paginator(posts, request)
     return render(request, 'posts/index.html', {'page_obj': page_obj})
 
@@ -20,7 +21,7 @@ def index(request: HttpRequest) -> HttpResponse:
 def group_posts(request: HttpRequest, slug) -> HttpResponse:
     """Вернуть посты группы"""
     group = get_object_or_404(Group, slug=slug)
-    posts = group.posts.select_related().all()
+    posts = group.posts.select_related()
     page_obj = paginator(posts, request)
     return render(
         request,
@@ -31,13 +32,11 @@ def group_posts(request: HttpRequest, slug) -> HttpResponse:
 
 def profile(request: HttpRequest, username: str) -> HttpResponse:
     author = get_object_or_404(User, username=username)
-    posts = author.posts.all()
+    posts = author.posts.select_related()
     page_obj = paginator(posts, request)
-    if request.user.is_authenticated and request.user != author:
-        following = Follow.objects.filter(user=request.user,
-                                          author=author).exists()
-    else:
-        following = False
+    following = request.user.is_authenticated and Follow.objects.filter(
+        user=request.user,
+        author=author).exists()
     context = {
         'page_obj': page_obj,
         'author': author,
@@ -48,7 +47,7 @@ def profile(request: HttpRequest, username: str) -> HttpResponse:
 
 def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
     post = get_object_or_404(Post, id=post_id)
-    form = CommentForm(request.POST or None)
+    form = CommentForm()
     comments = post.comments.all()
     context = {'post': post, 'form': form, 'comments': comments}
     return render(request, 'posts/post_detail.html', context)

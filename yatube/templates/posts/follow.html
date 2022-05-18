@@ -5,6 +5,7 @@
 {% block content %}
   <div class="container py-5">`
     {% include 'includes/switcher.html' %}
+    <h1>Подписки</h1>
     {% for post in page_obj %}
       {% include "includes/post_info.html" %}
       {% if post.group %}

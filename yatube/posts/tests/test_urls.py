@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from ..models import Group, Post
+from ..models import Follow, Group, Post
 
 User = get_user_model()
 
@@ -23,9 +23,13 @@ class URLTests(TestCase):
         )
         cls.post = Post.objects.create(
             text='Некоторый текст',
-            pub_date='05.05.05',
+            created='05.05.05',
             author=cls.user,
             group=cls.group
+        )
+        cls.follow = Follow.objects.create(
+            user=cls.user_2,
+            author=cls.user
         )
 
     def setUp(self):
@@ -49,8 +53,8 @@ class URLTests(TestCase):
             reverse('posts:post_create'):
                 'posts/create.html',
             reverse('posts:post_edit', kwargs={'post_id': f'{self.post.id}'}):
-                'posts/create.html'
-
+                'posts/create.html',
+            reverse('posts:follow_index'): 'posts/follow.html'
         }
         for url, template in templates_url_names.items():
             with self.subTest(url=url):
@@ -76,10 +80,16 @@ class URLTests(TestCase):
         response = self.authorized_client.get(reverse('posts:post_create'))
         self.assertEqual(response.status_code, HTTPStatus.OK)
 
+    def test_follow_url_exists_at_desired_location(self):
+        """Страница '/follow/' доступна авторизованному пользователю."""
+        response = self.authorized_client.get(reverse('posts:follow_index'))
+        self.assertEqual(response.status_code, HTTPStatus.OK)
+
     def test_guest_client_redirect(self):
         """Неавторизированный пользователь
-        перенаправляется со страниц create и post_edit."""
+        перенаправляется со страниц create, follow, post_edit."""
         urls = (reverse('posts:post_create'),
+                reverse('posts:follow_index'),
                 reverse('posts:post_edit',
                         kwargs={'post_id': f'{self.post.id}'}))
         for url in urls:
@@ -98,12 +108,6 @@ class URLTests(TestCase):
         response = self.authorized_client_2.get(reverse(
             'posts:post_edit', kwargs={'post_id': f'{self.post.id}'}))
         self.assertEqual(response.status_code, HTTPStatus.FOUND)
-
-    def test_not_exist_page(self):
-        """Несуществующая страница выдаст ошибку 404"""
-        response = self.guest_client.get(reverse('posts:group_list',
-                                                 kwargs={'slug': '3'}))
-        self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
 
     def test_comment_access_auth_user(self):
         """Авторизованный пользователь может комментировать посты"""
@@ -130,5 +134,20 @@ class URLTests(TestCase):
                 response = self.authorized_client_2.get(
                     reverse(name, kwargs={'username': 'SomeName'})
                 )
-        self.assertRedirects(response, reverse(
-            'posts:profile', kwargs={'username': 'SomeName'}))
+                self.assertRedirects(response, reverse(
+                    'posts:profile', kwargs={'username': 'SomeName'}))
+
+    def test_guest_user_cannot_follow(self):
+        """Неавторизованный пользователь не может подписываться
+         на других пользователей и удалять их из подписок """
+        names = ('follow', 'unfollow')
+        for name in names:
+            with self.subTest(name=name):
+                response = self.client.get(
+                    reverse(f'posts:profile_{name}',
+                            kwargs={'username': 'SomeName'})
+                )
+                self.assertRedirects(
+                    response,
+                    f'/auth/login/?next=/profile/{self.user.username}/{name}/'
+                )

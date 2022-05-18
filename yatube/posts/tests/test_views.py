@@ -9,7 +9,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from ..models import Group, Post
+from ..models import Comment, Follow, Group, Post
 
 User = get_user_model()
 
@@ -52,6 +52,11 @@ class ViewsTests(TestCase):
             group=cls.group,
             image=cls.uploaded
         )
+        cls.comment = Comment.objects.create(
+            post=cls.post,
+            author=cls.user,
+            text='Тестовый комментарий, йоу'
+        )
 
     @classmethod
     def tearDownClass(cls):
@@ -77,19 +82,17 @@ class ViewsTests(TestCase):
             reverse('posts:post_create'):
                 'posts/create.html',
             reverse('posts:post_edit', kwargs={'post_id': f'{self.post.id}'}):
-                'posts/create.html'
+                'posts/create.html',
+            reverse('posts:follow_index'): 'posts/follow.html'
         }
         for reverse_name, template in templates_pages_names.items():
             with self.subTest(reverse_name=reverse_name):
                 response = self.authorized_client.get(reverse_name)
                 self.assertTemplateUsed(response, template)
 
-    def post_check(self, response):
-        self.assertIn('page_obj', response.context)
-        post = response.context['page_obj'][0]
-
+    def post_check(self, post):
         self.assertEqual(post.author, self.user)
-        self.assertEqual(post.pub_date, self.post.pub_date)
+        self.assertEqual(post.created, self.post.created)
         self.assertEqual(post.text, self.post.text)
         self.assertEqual(post.group, self.post.group)
         self.assertEqual(post.image, 'posts/small.gif')
@@ -97,41 +100,42 @@ class ViewsTests(TestCase):
     def test_index_page_context_is_correct(self):
         """Шаблон index сформирован с правильным контекстом"""
         response = self.client.get(reverse('posts:index'))
-        self.post_check(response)
+        self.assertIn('page_obj', response.context)
+        self.post_check(response.context['page_obj'][0])
 
     def test_group_page_context_is_correct(self):
         """Шаблон group сформирован с правильным контекстом"""
         response = self.client.get(reverse('posts:group_list',
                                            kwargs={'slug': '2'}))
         group = response.context['group']
+        self.assertIn('page_obj', response.context)
         self.assertEqual(group.slug, self.group.slug)
         self.assertEqual(group.title, self.group.title)
         self.assertEqual(group.description, self.group.description)
-        self.post_check(response)
+        self.post_check(response.context['page_obj'][0])
 
     def test_profile_page_context_is_correct(self):
         """Шаблон profile сформирован с правильным контекстом"""
         response = self.client.get(reverse('posts:profile',
                                            kwargs={'username': 'SomeName'}))
         user = response.context['author']
-        self.assertEqual(user.username, self.user.username)
-        self.post_check(response)
+        self.assertIn('page_obj', response.context)
+        self.assertEqual(user, self.user)
+        self.post_check(response.context['page_obj'][0])
+        self.assertFalse(response.context['following'])
 
     def test_post_detail_page_contains_one_right_post(self):
-        """Страница поста содержит соответсвующий пост"""
+        """Шаблон post_detail сформирован с правильным контекстом"""
         response = self.client.get(reverse(
             'posts:post_detail',
             kwargs={'post_id': f'{self.post.id}'}))
-        self.assertEqual(response.context['post'],
-                         self.post)
-
-    def test_post_detail_page_contains_image(self):
-        """Страница поста содержит картинку"""
-        response = self.client.get(reverse(
-            'posts:post_detail',
-            kwargs={'post_id': f'{self.post.id}'}))
-        self.assertEqual(response.context['post'].image,
-                         'posts/small.gif')
+        self.post_check(response.context['post'])
+        form_field = response.context.get('form').fields.get('text')
+        self.assertIsInstance(form_field, forms.fields.CharField)
+        comment = response.context['comments'][0]
+        self.assertEqual(comment.text, self.comment.text)
+        self.assertEqual(comment.post, self.post)
+        self.assertEqual(comment.author, self.user)
 
     def test_pages_show_correct_context(self):
         """Шаблоны create и post_edit сформированы с правильным контекстом."""
@@ -204,13 +208,18 @@ class ViewsTests(TestCase):
             author=self.user,
             group=self.group
         )
-        self.authorized_client_2.get(reverse('posts:profile_follow',
-                                             kwargs={'username': 'SomeName'})
-                                     )
+        Follow.objects.create(
+            user=user_2,
+            author=self.user
+        )
         response = self.authorized_client_2.get(
             reverse('posts:follow_index'))
         self.assertContains(response, self.post)
         response = self.authorized_client_3.get(
+            reverse('posts:follow_index'))
+        self.assertNotContains(response, self.post)
+        Follow.objects.filter(user=user_2, author=self.user).delete()
+        response = self.authorized_client_2.get(
             reverse('posts:follow_index'))
         self.assertNotContains(response, self.post)
 
