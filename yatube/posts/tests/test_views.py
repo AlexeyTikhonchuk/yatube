@@ -124,7 +124,7 @@ class ViewsTests(TestCase):
         self.post_check(response.context['page_obj'][0])
         self.assertFalse(response.context['following'])
 
-    def test_post_detail_page_contains_one_right_post(self):
+    def test_post_detail_page_context_is_correct(self):
         """Шаблон post_detail сформирован с правильным контекстом"""
         response = self.client.get(reverse(
             'posts:post_detail',
@@ -196,13 +196,10 @@ class ViewsTests(TestCase):
 
     def test_new_post_in_follow(self):
         """Новая запись пользователя появляется в ленте тех,
-         кто на него подписан и не появляется в ленте тех, кто не подписан """
+         кто подписан на автора """
         user_2 = User.objects.create_user(username='SomeName_2')
         self.authorized_client_2 = Client()
         self.authorized_client_2.force_login(user_2)
-        user_3 = User.objects.create_user(username='SomeName_3')
-        self.authorized_client_3 = Client()
-        self.authorized_client_3.force_login(user_3)
         self.post = Post.objects.create(
             text='Некоторый новый текст',
             author=self.user,
@@ -215,13 +212,45 @@ class ViewsTests(TestCase):
         response = self.authorized_client_2.get(
             reverse('posts:follow_index'))
         self.assertContains(response, self.post)
+
+    def test_new_post_not_in_follow(self):
+        """Новая запись пользователя не появляется в ленте тех,
+        кто не подписан на автора """
+        user_3 = User.objects.create_user(username='SomeName_3')
+        self.authorized_client_3 = Client()
+        self.authorized_client_3.force_login(user_3)
+        self.post = Post.objects.create(
+            text='Некоторый новый текст',
+            author=self.user,
+            group=self.group
+        )
         response = self.authorized_client_3.get(
             reverse('posts:follow_index'))
         self.assertNotContains(response, self.post)
-        Follow.objects.filter(user=user_2, author=self.user).delete()
-        response = self.authorized_client_2.get(
-            reverse('posts:follow_index'))
-        self.assertNotContains(response, self.post)
+
+    def test_user_can_follow(self):
+        """Авторизованный пользователь может подписываться на других
+        пользователей"""
+        user_2 = User.objects.create_user(username='SomeName_2')
+        self.authorized_client_2 = Client()
+        self.authorized_client_2.force_login(user_2)
+        self.authorized_client_2.get(reverse(
+            'posts:profile_follow', kwargs={'username': 'SomeName'}))
+        self.assertTrue(Follow.objects.filter(user=user_2,
+                                              author=self.user).exists())
+
+    def test_user_can_unfollow(self):
+        """Авторизованный пользователь может удалять других
+        пользователей из подписок"""
+        user_2 = User.objects.create_user(username='SomeName_2')
+        self.authorized_client_2 = Client()
+        self.authorized_client_2.force_login(user_2)
+        self.authorized_client_2.get(reverse(
+            'posts:profile_follow', kwargs={'username': 'SomeName'}))
+        self.authorized_client_2.get(reverse(
+            'posts:profile_unfollow', kwargs={'username': 'SomeName'}))
+        self.assertFalse(Follow.objects.filter(user=user_2,
+                                               author=self.user).exists())
 
 
 class PaginatorTests(TestCase):

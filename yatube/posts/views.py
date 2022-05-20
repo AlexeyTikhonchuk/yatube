@@ -10,10 +10,9 @@ from .utils import paginator
 User = get_user_model()
 
 
-# @cache_page(20)
 def index(request: HttpRequest) -> HttpResponse:
     """Вернуть главную страницу"""
-    posts = Post.objects.all()
+    posts = Post.objects.select_related()
     page_obj = paginator(posts, request)
     return render(request, 'posts/index.html', {'page_obj': page_obj})
 

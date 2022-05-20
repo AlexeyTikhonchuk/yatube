@@ -3,6 +3,7 @@
 {% if user.is_authenticated %}
   <div class="card my-4">
     <h5 class="card-header">Добавить комментарий:</h5>
+    {% include 'includes/if_errors.html' %}
     <form method="post" action="{% url 'posts:add_comment' post.id %}">
       {% csrf_token %}
       {% include  'includes/form.html' %}
